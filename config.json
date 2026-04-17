@@ -1,0 +1,18 @@
+{
+  "solara_url": "http://YOUR_TAILSCALE_IP:3010",
+  "solara_password": "YOUR_SOLARA_PASSWORD",
+  "nas_host": "YOUR_USERNAME@YOUR_TAILSCALE_IP",
+  "nas_pass": "YOUR_NAS_PASSWORD",
+  "media_path": "/vol1/1000/docker/daoliyu/media",
+  "mtw_url": "http://YOUR_TAILSCALE_IP:8010",
+  "mtw_user": "admin",
+  "mtw_pass": "YOUR_MTW_PASSWORD",
+  "prefer_hires": true,
+  "sources": [
+    "netease",
+    "kuwo"
+  ],
+  "default_quality": 999,
+  "gd_api_base": "https://music-api-hk.gdstudio.xyz/api.php",
+  "proxy": ""
+}
