@@ -25,14 +25,14 @@ commands:
 ## 推荐入口
 
 ```bash
-python3 /Users/cliang/.hermes/skills/media/auto-music-download/scripts/music-manager.py "歌曲名" "歌手" --quality 999
+python3 scripts/music-manager.py "歌曲名" "歌手" --quality 999
 ```
 
 可选参数：
 - `--source netease|kuwo`：指定音源。
 - `--quality 999|320`：999 优先 FLAC，无资源时可用 320。
 
-配置文件：`/Users/cliang/.hermes/skills/media/auto-music-download/config.json`。
+配置文件：`config.json`。
 
 ## 性能约定
 - 使用 `music-manager.py`，不要手写多段 SSH。脚本已使用 SSH ControlMaster 复用连接。
