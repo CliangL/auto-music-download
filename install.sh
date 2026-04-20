@@ -1,146 +1,118 @@
 #!/bin/bash
-# ============================================================
-# auto-music-download 一键安装脚本
-# One-click install script for auto-music-download
-# ============================================================
-# 功能 / Features:
-#   1. 检查环境依赖 (Check dependencies)
-#   2. 引导填写配置 (Interactive config setup)
-#   3. 生成 config.json (Generate config)
-#   4. 测试连接 (Test connectivity)
-# ============================================================
+# auto-music-download install/update script.
+# Re-running this script updates defaults and validates code without deleting
+# existing Solara/NAS/Music Tag Web credentials.
 
-set -e
+set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_FILE="$SKILL_DIR/config.json"
 
-# 颜色输出 / Colored output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}============================================${NC}"
-echo -e "${GREEN}  🎵 auto-music-download 安装向导${NC}"
-echo -e "${GREEN}  Installation Wizard${NC}"
-echo -e "${BLUE}============================================${NC}"
-echo ""
-
-# ---- Step 1: 检查依赖 / Check Dependencies ----
-echo -e "${YELLOW}[1/4] 检查环境依赖... / Checking dependencies...${NC}"
-
-check_dep() {
-    if command -v "$1" &>/dev/null; then
-        echo -e "  ✅ $1 已安装 / installed"
+read_default() {
+    local prompt="$1"
+    local default="$2"
+    local value
+    if [ -n "$default" ] && [ "$default" != "null" ]; then
+        read -r -p "$prompt [$default]: " value
+        printf '%s' "${value:-$default}"
     else
-        echo -e "  ❌ $1 未安装 / NOT installed"
-        MISSING_DEPS="$MISSING_DEPS $1"
+        read -r -p "$prompt: " value
+        printf '%s' "$value"
     fi
 }
 
-MISSING_DEPS=""
-check_dep python3
-check_dep curl
-check_dep sshpass
+json_get() {
+    local expr="$1"
+    [ -f "$CONFIG_FILE" ] || return 0
+    jq -r "$expr // empty" "$CONFIG_FILE" 2>/dev/null || true
+}
 
-if [ -n "$MISSING_DEPS" ]; then
-    echo ""
-    echo -e "${RED}缺少依赖 / Missing dependencies:$MISSING_DEPS${NC}"
-    echo ""
-    echo "安装命令 / Install commands:"
-    echo "  Debian/Ubuntu: sudo apt install $MISSING_DEPS"
-    echo "  CentOS/RHEL:   sudo yum install $MISSING_DEPS"
-    echo "  macOS:         brew install $MISSING_DEPS"
-    echo ""
-    read -p "是否继续？(y/n) / Continue anyway? (y/n): " CONTINUE
-    if [ "$CONTINUE" != "y" ]; then
-        echo "退出安装 / Exiting."
-        exit 1
+echo -e "${BLUE}============================================${NC}"
+echo -e "${GREEN}auto-music-download 安装/更新向导${NC}"
+echo -e "${BLUE}============================================${NC}"
+
+echo -e "${YELLOW}[1/4] 检查依赖${NC}"
+for dep in python3 jq curl ssh; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        echo "  缺少依赖: $dep"
     fi
+done
+if ! command -v sshpass >/dev/null 2>&1; then
+    echo "  提示: 未安装 sshpass 时需配置 SSH key，或手动安装 sshpass"
 fi
 
-echo ""
-
-# ---- Step 2: 引导配置 / Config Setup ----
-echo -e "${YELLOW}[2/4] 请填写配置信息 / Please fill in configuration:${NC}"
-echo ""
-
-# 如果已有配置文件，询问是否覆盖
+echo -e "${YELLOW}[2/4] 生成或更新配置${NC}"
 if [ -f "$CONFIG_FILE" ]; then
-    echo -e "  发现已有配置文件 / Existing config found"
-    read -p "  是否覆盖？(y/n) / Overwrite? (y/n): " OVERWRITE
-    if [ "$OVERWRITE" != "y" ]; then
-        echo -e "${GREEN}保留现有配置 / Keeping existing config.${NC}"
-        exit 0
-    fi
-    echo ""
-fi
-
-read -p "  SolaraPlus 地址 (http://YOUR_NAS_IP:3010): " SOLARA_URL
-read -p "  SolaraPlus 密码: " SOLARA_PASSWORD
-read -p "  NAS SSH 地址 (user@IP): " NAS_HOST
-read -p "  NAS SSH 密码: " NAS_PASS
-read -p "  音乐存放路径 (/vol1/xxx/media): " MEDIA_PATH
-read -p "  Music Tag Web 地址 (可选, http://YOUR_NAS_IP:8010): " MTW_URL
-read -p "  Music Tag Web 密码 (可选): " MTW_PASS
-
-# 设置默认值 / Set defaults
-SOLARA_URL="${SOLARA_URL:-http://YOUR_NAS_IP:3010}"
-MEDIA_PATH="${MEDIA_PATH:-/vol1/1000/docker/daoliyu/media}"
-
-echo ""
-
-# ---- Step 3: 生成配置 / Generate Config ----
-echo -e "${YELLOW}[3/4] 生成配置文件... / Generating config...${NC}"
-
-cat > "$CONFIG_FILE" << EOF
-{
-  "solara_url": "$SOLARA_URL",
-  "solara_password": "$SOLARA_PASSWORD",
-  "nas_host": "$NAS_HOST",
-  "nas_pass": "$NAS_PASS",
-  "media_path": "$MEDIA_PATH",
-  "mtw_url": "${MTW_URL:-$SOLARA_URL}",
-  "mtw_user": "admin",
-  "mtw_pass": "${MTW_PASS:-}",
-  "prefer_hires": true,
-  "sources": ["netease", "kuwo"],
-  "default_quality": 999
-}
-EOF
-
-echo -e "  ✅ 配置已生成 / Config saved to: $CONFIG_FILE"
-echo ""
-
-# ---- Step 4: 测试连接 / Test Connection ----
-echo -e "${YELLOW}[4/4] 测试连接... / Testing connectivity...${NC}"
-echo ""
-
-echo "  测试 SSH 连接到 NAS... / Testing SSH connection to NAS..."
-if sshpass -p "$NAS_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 "$NAS_HOST" "echo ok" 2>/dev/null; then
-    echo -e "  ✅ SSH 连接成功 / SSH connected"
+    echo "  已发现配置，将保留现有接口/API/密码，只补齐缺省字段。"
 else
-    echo -e "  ⚠️  SSH 连接失败，请检查地址和密码 / SSH failed, check host and password"
+    echo "  新安装：请提供 Solara、NAS 和音乐目录信息。"
 fi
 
-echo ""
-echo "  测试 SolaraPlus 服务... / Testing SolaraPlus..."
-if sshpass -p "$NAS_PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 "$NAS_HOST" "curl -s --max-time 5 '${SOLARA_URL}/api/login' -X POST -H 'Content-Type: application/json' -d '{\"password\":\"test\"}'" 2>/dev/null; then
-    echo -e "  ✅ SolaraPlus 可访问 / SolaraPlus accessible"
+SOLARA_URL="$(json_get '.solara_url')"
+SOLARA_PASSWORD="$(json_get '.solara_password')"
+NAS_HOST="$(json_get '.nas_host')"
+NAS_PASS="$(json_get '.nas_pass')"
+MEDIA_PATH="$(json_get '.media_path')"
+MTW_URL="$(json_get '.mtw_url')"
+MTW_USER="$(json_get '.mtw_user')"
+MTW_PASS="$(json_get '.mtw_pass')"
+
+SOLARA_URL="$(read_default 'SolaraPlus 地址' "${SOLARA_URL:-http://YOUR_NAS_IP:3010}")"
+SOLARA_PASSWORD="$(read_default 'SolaraPlus 密码' "$SOLARA_PASSWORD")"
+NAS_HOST="$(read_default 'NAS SSH 地址(user@IP)' "$NAS_HOST")"
+NAS_PASS="$(read_default 'NAS SSH 密码' "$NAS_PASS")"
+MEDIA_PATH="$(read_default '音乐存放路径' "${MEDIA_PATH:-/vol1/xxx/music}")"
+MTW_URL="$(read_default 'Music Tag Web 地址(可选)' "$MTW_URL")"
+MTW_USER="$(read_default 'Music Tag Web 用户名(可选)' "${MTW_USER:-admin}")"
+MTW_PASS="$(read_default 'Music Tag Web 密码(可选)' "$MTW_PASS")"
+
+tmp="$CONFIG_FILE.tmp.$$"
+jq -n \
+  --arg solara_url "$SOLARA_URL" \
+  --arg solara_password "$SOLARA_PASSWORD" \
+  --arg nas_host "$NAS_HOST" \
+  --arg nas_pass "$NAS_PASS" \
+  --arg media_path "$MEDIA_PATH" \
+  --arg mtw_url "$MTW_URL" \
+  --arg mtw_user "$MTW_USER" \
+  --arg mtw_pass "$MTW_PASS" \
+  '{
+    solara_url: $solara_url,
+    solara_password: $solara_password,
+    nas_host: $nas_host,
+    nas_pass: $nas_pass,
+    media_path: $media_path,
+    mtw_url: $mtw_url,
+    mtw_user: $mtw_user,
+    mtw_pass: $mtw_pass,
+    prefer_hires: true,
+    sources: ["netease", "kuwo"],
+    default_quality: 999,
+    gd_api_base: "https://music-api-hk.gdstudio.xyz/api.php",
+    proxy: ""
+  }' > "$tmp"
+if [ -f "$CONFIG_FILE" ]; then
+    merged="$CONFIG_FILE.merged.$$"
+    jq -s '.[0] * .[1]' "$CONFIG_FILE" "$tmp" > "$merged"
+    mv "$merged" "$CONFIG_FILE"
+    rm -f "$tmp"
 else
-    echo -e "  ⚠️  SolaraPlus 无法访问，请检查地址 / SolaraPlus not accessible"
+    mv "$tmp" "$CONFIG_FILE"
 fi
+chmod 600 "$CONFIG_FILE"
 
-echo ""
-echo -e "${BLUE}============================================${NC}"
-echo -e "${GREEN}  🎉 安装完成！/ Installation Complete!${NC}"
-echo -e "${BLUE}============================================${NC}"
-echo ""
-echo "测试下载 / Test download:"
-echo "  python3 scripts/music-manager.py \"测试歌曲\""
-echo ""
-echo "通过 AI 助手使用 / Use with AI assistant:"
-echo "  告诉助手: \"我想听 XXX\""
-echo ""
+echo -e "${YELLOW}[3/4] 清理运行时临时文件${NC}"
+rm -f "$SKILL_DIR/.solara_cookies.txt" 2>/dev/null || true
+
+echo -e "${YELLOW}[4/4] 语法检查${NC}"
+python3 -m py_compile "$SKILL_DIR"/scripts/*.py >/dev/null
+for sh in "$SKILL_DIR"/scripts/*.sh; do
+    bash -n "$sh"
+done
+
+echo -e "${GREEN}完成。已有配置已保留并刷新为当前格式。${NC}"

@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.tmp
+.env
+.solara_cookies.txt
+/musicdl_outputs/
+/scripts/musicdl_outputs/
