@@ -50,13 +50,18 @@ URL_LOOKUP_TIMEOUT = 5
 # 仍然把关,若 740 给的不是 FLAC 会被 validate_flac 拒绝,不会混入有损文件。
 BR_FALLBACK = [999, 740]
 
-def curl_json(url, timeout=15):
-    try:
-        req = Request(url, headers={{"User-Agent": "Mozilla/5.0"}})
-        with urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode())
-    except:
-        return None
+def curl_json(url, timeout=15, retries=2):
+    # GD API 不稳定，偶发瞬时返回空/超时。网络或解析失败时重试，
+    # 避免"搜索那一刻抽风→回退到挂掉的源→整单失败"。
+    for attempt in range(retries + 1):
+        try:
+            req = Request(url, headers={{"User-Agent": "Mozilla/5.0"}})
+            with urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode())
+        except Exception:
+            if attempt < retries:
+                time.sleep(0.8 * (attempt + 1))
+    return None
 
 def norm_text(text):
     return "".join(ch.lower() for ch in (text or "") if ch.isalnum() or "\u4e00" <= ch <= "\u9fff")
@@ -83,6 +88,11 @@ def search_candidates(song_name, artist="", source="kuwo", count=CANDIDATES_PER_
     candidates = []
     url = f"{{GD_API}}?types=search&source={{source}}&name={{quote(kw)}}&count={{count}}"
     results = curl_json(url, timeout=10)
+    if not results and artist:
+        # 带歌手搜不到（GD API 抽风或该源无此歌手版本）→ 退化为纯歌名再搜一次，
+        # 歌手仍在 artist_match_level 里参与排序，既不丢消歧也不会因瞬时空而整单失败。
+        url2 = f"{{GD_API}}?types=search&source={{source}}&name={{quote(song_name)}}&count={{count}}"
+        results = curl_json(url2, timeout=10)
     if not results:
         return candidates
     for r in results:
