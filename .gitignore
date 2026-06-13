@@ -1,0 +1,12 @@
+# 用户真实配置（由 install.sh 从 .example 生成，含密码，禁止提交）
+config.json
+# 运行产物
+__pycache__/
+*.pyc
+*.bak
+*.bak-*
+.DS_Store
+.env
+.solara_cookies.txt
+/tmp/
+/logs/
